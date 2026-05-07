@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUser } from '../contexts/UserContext';
+import type { RiskTolerance } from '../types';
 import { 
   Settings, 
   Award, 
@@ -17,9 +18,9 @@ import { motion } from 'motion/react';
 
 export default function Profile() {
   const { t } = useTranslation();
-  const { user, profile, logout, login, updateProfile } = useUser();
+  const { user, profile, logout, login, updateProfile, authError } = useUser();
 
-  const handleRiskChange = (level: string) => {
+  const handleRiskChange = (level: RiskTolerance) => {
     updateProfile({ riskTolerance: level });
   };
 
@@ -33,12 +34,17 @@ export default function Profile() {
            <h2 className="text-3xl font-serif font-bold">{t('profile.sign_in_msg')}</h2>
            <p className="text-gray-500">{t('profile.sign_in_desc')}</p>
         </div>
-        <button 
+        <button
           onClick={login}
           className="px-10 py-5 bg-[#1a1a1a] text-white rounded-2xl font-bold shadow-xl hover:bg-orange-600 transition-colors"
         >
           {t('profile.google_btn')}
         </button>
+        {authError && (
+          <p role="alert" className="text-sm text-red-600 font-medium max-w-md text-center">
+            {authError}
+          </p>
+        )}
       </div>
     );
   }
@@ -146,11 +152,11 @@ export default function Profile() {
               Our AI Advisor, Al-Murshid, uses this profile to tailor institutional-grade investment strategies specifically for your preference.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-               {[
+               {([
                  { id: 'conservative', label: t('profile.risk_conservative'), color: 'pink', desc: 'Preservation over growth' },
                  { id: 'moderate', label: t('profile.risk_moderate'), color: 'blue', desc: 'Balanced growth & safety' },
                  { id: 'aggressive', label: t('profile.risk_aggressive'), color: 'orange', desc: 'Maximum growth potential' }
-               ].map((risk) => (
+               ] as const).map((risk) => (
                  <button
                    key={risk.id}
                    onClick={() => handleRiskChange(risk.id)}

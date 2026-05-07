@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MessageSquare, Send, X, Bot, Sparkles, User as UserIcon } from 'lucide-react';
-import { ai, MODELS } from '../../lib/gemini';
+import { generateContent, MODELS } from '../../lib/gemini';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUser } from '../../contexts/UserContext';
 
@@ -33,10 +33,10 @@ export default function AIAdvisor() {
   }, [messages, isTyping]);
 
   const handleSend = async () => {
-    if (!input.trim() || !ai) return;
+    if (!input.trim()) return;
 
     if (!user) {
-      setMessages(prev => [...prev, 
+      setMessages(prev => [...prev,
         { role: 'user', content: input.trim() },
         { role: 'model', content: "Salutations. I am Al-Murshid, your institutional AI advisor. To provide personalized financial counsel based on your unique risk profile and knowledge level, I require you to be a registered member of the platform. Please enter the platform to proceed with our intelligence discourse." }
       ]);
@@ -46,15 +46,16 @@ export default function AIAdvisor() {
 
     const userMessage = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    const nextHistory: Message[] = [...messages, { role: 'user', content: userMessage }];
+    setMessages(nextHistory);
     setIsTyping(true);
 
     try {
-      const systemPrompt = `You are "Al-Murshid", an expert financial advisor on the Isthmarati platform. 
+      const systemPrompt = `You are "Al-Murshid", an expert financial advisor on the Isthmarati platform.
       The platform uses an editorial, institutional-grade brand voice.
-      
+
       Always respond in the language the user is speaking (${i18n.language}).
-      Be professional, intellectual, and clear. 
+      Be professional, intellectual, and clear.
       Focus on providing high-level wealth management advice and financial literacy.
 
       USER CONTEXT:
@@ -72,22 +73,22 @@ export default function AIAdvisor() {
       3. Global Standards: Only mention legitimate asset classes (equities, index funds, bonds, established crypto, real estate).
       4. Disclaimer: Always include a brief institutional disclaimer at the end that this is educational advice.`;
 
-      const response = await ai.models.generateContent({
+      const reply = await generateContent({
         model: MODELS.flash,
-        contents: [
-            ...messages.map(m => ({ role: m.role, parts: [{ text: m.content }] })),
-            { role: 'user', parts: [{ text: userMessage }] }
-        ],
-        config: {
-          systemInstruction: systemPrompt,
-        }
+        messages: nextHistory,
+        systemInstruction: systemPrompt,
       });
 
-      const reply = response.text || "I apologize, I'm having trouble processing that right now.";
-      setMessages(prev => [...prev, { role: 'model', content: reply }]);
+      setMessages(prev => [...prev, { role: 'model', content: reply || "I apologize, I'm having trouble processing that right now." }]);
     } catch (error) {
-      console.error("Gemini Error:", error);
-      setMessages(prev => [...prev, { role: 'model', content: "I'm sorry, I'm offline at the moment. Please try again later." }]);
+      const code = (error as { code?: string })?.code;
+      const friendly = code === 'functions/unauthenticated'
+        ? 'Please sign in to use the AI advisor.'
+        : code === 'functions/invalid-argument'
+        ? 'Your message could not be processed. Please try rewording it.'
+        : "I'm sorry, I'm offline at the moment. Please try again later.";
+      console.error('Gemini Error:', error);
+      setMessages(prev => [...prev, { role: 'model', content: friendly }]);
     } finally {
       setIsTyping(false);
     }

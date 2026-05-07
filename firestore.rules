@@ -1,8 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // --- GLOBAL HELPERS ---
+
+    // --- HELPERS ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -11,28 +11,91 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function diffOnly(allowedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
+    }
+
+    function affectsAny(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
     // --- USERS ---
+    // Per security_spec.md: profiles are private to the owner. Forbid role
+    // escalation (isAdmin, isVerified) and bound point growth so a malicious
+    // client can't write `points: 1_000_000` directly.
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.email is string
+        && (!('points' in request.resource.data) || request.resource.data.points == 0)
+        && (!('level' in request.resource.data) || request.resource.data.level == 1)
+        && !('isAdmin' in request.resource.data)
+        && !('isVerified' in request.resource.data);
+
+      // Updates: owner only, immutable identity fields, no role escalation,
+      // points monotonic and capped at +100/write.
+      allow update: if isOwner(userId)
+        && !affectsAny(['uid', 'email', 'createdAt', 'isAdmin', 'isVerified'])
+        && (!affectsAny(['points'])
+            || (request.resource.data.points is number
+                && request.resource.data.points >= resource.data.get('points', 0)
+                && request.resource.data.points <= resource.data.get('points', 0) + 100));
+
+      allow delete: if false;
     }
 
     // --- POSTS ---
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        // Author can update content
-        (resource.data.authorId == request.auth.uid) ||
-        // Signed in users can update likesCount
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount']))
-      );
-      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
-    }
 
-    // --- COMMENTS ---
-    match /posts/{postId}/comments/{commentId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 10000
+        && request.resource.data.likesCount == 0
+        && request.resource.data.createdAt == request.time;
+
+      // Author may edit content fields; anyone signed in may bump likesCount by +1.
+      allow update: if isSignedIn() && (
+        (resource.data.authorId == request.auth.uid
+          && diffOnly(['title', 'content', 'category'])
+          && (!('title' in request.resource.data) || (request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 200))
+          && (!('content' in request.resource.data) || (request.resource.data.content is string && request.resource.data.content.size() > 0 && request.resource.data.content.size() <= 10000)))
+        ||
+        (diffOnly(['likesCount'])
+          && request.resource.data.likesCount == resource.data.likesCount + 1)
+      );
+
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+
+      // --- COMMENTS ---
+      match /comments/{commentId} {
+        allow read: if true;
+
+        allow create: if isSignedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.postId == postId
+          && exists(/databases/$(database)/documents/posts/$(postId))
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 5000
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if isSignedIn()
+          && resource.data.authorId == request.auth.uid
+          && diffOnly(['content'])
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 5000;
+
+        allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      }
     }
 
     // --- QUIZZES ---
@@ -42,8 +105,11 @@ service cloud.firestore {
     }
 
     // --- TEST ---
+    // Single connection-probe doc readable without auth so the Firebase SDK
+    // can verify config before sign-in. Nothing else in /test is exposed.
     match /test/{docId} {
-      allow read: if true;
+      allow read: if docId == 'connection';
+      allow write: if false;
     }
 
     // --- GLOBAL DENY ---

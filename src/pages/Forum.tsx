@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  Plus, 
-  MessageCircle, 
-  ThumbsUp, 
-  Share2, 
-  MoreHorizontal, 
-  AlertCircle,
-  Search,
-  Filter
+import {
+  Plus,
+  MessageCircle,
+  ThumbsUp,
+  Share2,
+  MoreHorizontal,
+  RefreshCcw,
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, increment, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, increment, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { useUser } from '../contexts/UserContext';
 import { motion, AnimatePresence } from 'motion/react';
+import type { ForumPost } from '../types';
 
 export default function Forum() {
   const { t } = useTranslation();
   const { user } = useUser();
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<ForumPost[]>([]);
   const [isNewPostModalOpen, setIsNewPostModalOpen] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', content: '', category: 'General' });
   const [isLoading, setIsLoading] = useState(true);
@@ -27,7 +26,7 @@ export default function Forum() {
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as ForumPost)));
       setIsLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'posts');
@@ -125,7 +124,7 @@ export default function Forum() {
                       <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
                          <span className="px-2 py-0.5 bg-gray-100 rounded-md text-[10px] font-bold text-gray-500">{post.category}</span>
                          <span className="w-1 h-1 bg-gray-300 rounded-full" />
-                         <span>{post.createdAt?.toDate ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Just now'}</span>
+                         <span>{post.createdAt instanceof Timestamp ? post.createdAt.toDate().toLocaleDateString() : 'Just now'}</span>
                       </div>
                    </div>
                 </div>
@@ -243,24 +242,3 @@ export default function Forum() {
   );
 }
 
-function RefreshCcw(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-      <path d="M16 16h5v5" />
-    </svg>
-  );
-}
