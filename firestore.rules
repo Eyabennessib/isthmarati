@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- USERS ---
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // --- POSTS ---
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        // Author can update content
+        (resource.data.authorId == request.auth.uid) ||
+        // Signed in users can update likesCount
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount']))
+      );
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // --- COMMENTS ---
+    match /posts/{postId}/comments/{commentId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // --- QUIZZES ---
+    match /quizzes/{quizId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // --- TEST ---
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // --- GLOBAL DENY ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

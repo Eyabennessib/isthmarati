@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user preferences and gamification progress.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "points": { "type": "number" },
+        "level": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "completedLessons": { "type": "array", "items": { "type": "string" } },
+        "riskTolerance": { "type": "string", "enum": ["conservative", "moderate", "aggressive"] },
+        "preferredLanguage": { "type": "string", "enum": ["en", "fr", "ar"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "ForumPost": {
+      "title": "Forum Post",
+      "description": "Community insights shared by users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "likesCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "title", "content"]
+    },
+    "Comment": {
+      "title": "Forum Comment",
+      "description": "Replies to forum posts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "content"]
+    },
+    "Quiz": {
+      "title": "Gamified Module",
+      "description": "Educational quizzes to earn points.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "expert"] },
+        "pointsReward": { "type": "number" },
+        "questions": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and settings."
+    },
+    "/posts/{postId}": {
+      "schema": "ForumPost",
+      "description": "Forum posts."
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on forum posts."
+    },
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Gamified learning modules."
+    }
+  }
+}
