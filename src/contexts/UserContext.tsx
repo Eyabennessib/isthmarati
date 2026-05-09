@@ -1,16 +1,21 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { useTranslation } from 'react-i18next';
+import type { Language, UserProfile } from '../types';
+
+type ProfileUpdate = Partial<Omit<UserProfile, 'uid' | 'email' | 'createdAt'>>;
 
 interface UserContextType {
   user: User | null;
-  profile: any | null;
+  profile: UserProfile | null;
   loading: boolean;
+  authError: string | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: any) => Promise<void>;
+  updateProfile: (data: ProfileUpdate) => Promise<void>;
+  clearAuthError: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -18,31 +23,30 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const { i18n } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
-      // Cleanup previous profile listener if it exists
       if (unsubProfile) {
         unsubProfile();
         unsubProfile = null;
       }
 
       setUser(u);
-      
+
       if (u) {
         const userRef = doc(db, 'users', u.uid);
-        
+
         unsubProfile = onSnapshot(userRef, (snap) => {
           if (snap.exists()) {
-            setProfile(snap.data());
+            setProfile(snap.data() as UserProfile);
             setLoading(false);
           } else {
-            // Document doesn't exist, create it
-            const newProfile = {
+            const newProfile: UserProfile = {
               uid: u.uid,
               email: u.email,
               displayName: u.displayName,
@@ -52,15 +56,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
               badges: [],
               completedLessons: [],
               riskTolerance: 'moderate',
-              preferredLanguage: i18n.language || 'en',
+              preferredLanguage: (i18n.language as Language) || 'en',
               createdAt: serverTimestamp(),
             };
-            
-            // Note: setDoc will trigger the snapshot listener again
+
             setDoc(userRef, newProfile).catch(err => {
               handleFirestoreError(err, OperationType.WRITE, `users/${u.uid}`);
             });
-            // We don't setProfile here, we let the snapshot listener handle it
           }
         }, (err) => {
           handleFirestoreError(err, OperationType.GET, `users/${u.uid}`);
@@ -79,19 +81,28 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [i18n.language]);
 
   const login = async () => {
+    setAuthError(null);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (err) {
+      const code = (err as { code?: string })?.code;
+      // Don't surface a user-cancelled popup as an error.
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      const message = err instanceof Error ? err.message : 'Sign-in failed. Please try again.';
       console.error('Login Error:', err);
+      setAuthError(message);
     }
   };
 
   const logout = async () => {
+    setAuthError(null);
     await signOut(auth);
   };
 
-  const updateProfile = async (data: any) => {
+  const updateProfile = async (data: ProfileUpdate) => {
     if (!user) return;
     try {
       const userRef = doc(db, 'users', user.uid);
@@ -101,8 +112,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const clearAuthError = () => setAuthError(null);
+
   return (
-    <UserContext.Provider value={{ user, profile, loading, login, logout, updateProfile }}>
+    <UserContext.Provider value={{ user, profile, loading, authError, login, logout, updateProfile, clearAuthError }}>
       {children}
     </UserContext.Provider>
   );
